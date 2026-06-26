@@ -1,15 +1,18 @@
-import Kramer_hyperRrs
-import Kramer_Rrs_pigments
-import pandas as pd
-import numpy as np
-import xarray as xr
-import matplotlib.pyplot as plt
-import cartopy
-import cartopy.crs as ccrs
-import cartopy.feature as cfeature
-from matplotlib.colors import ListedColormap, BoundaryNorm, LogNorm
-import time
 from datetime import datetime
+from importlib.resources import files
+from time import perf_counter
+
+import cartopy
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import xarray as xr
+
+from .Kramer_hyperRrs import get_rrs_residuals
+from .Kramer_Rrs_pigments import train_model
+
+ASSETS = files().joinpath('resources')
+
 
 def generate_coefficients():
     '''
@@ -23,7 +26,7 @@ def generate_coefficients():
     See Kramer_Rrs_pigments.py for details. 
     '''
 
-    data = pd.read_excel('HPLC_Rrs_forAli_2025.xlsx', header=0)
+    data = pd.read_excel(ASSETS / 'HPLC_Rrs_forAli_2025.xlsx', header=0)
 
     sal = data.loc[:,'Sal'].values # array: (n_samples,)
     temp = data.loc[:,'Temp'].values # array: (n_samples,)
@@ -31,12 +34,12 @@ def generate_coefficients():
     wavelegnths = np.arange(400,701) # array: (n_wavelengths,)
 
     # get Rrs residuals
-    rrsD, RrsD = Kramer_hyperRrs.get_rrs_residuals(Rrs, temp, sal, wavelegnths)
+    rrsD, RrsD = get_rrs_residuals(Rrs, temp, sal, wavelegnths)
 
     hplc = data.loc[:,'Tchla':'Pras'].values
 
     # train model, create a spreadsheet with coefficients
-    Kramer_Rrs_pigments.train_model(RrsD, hplc)
+    train_model(RrsD, hplc)
     
 def run_sdp(rrs,wl,sst,sss):
     '''
@@ -75,7 +78,7 @@ def run_sdp(rrs,wl,sst,sss):
         'Perid'
     ]
 
-    res_start = time.time()
+    res_start = perf_counter()
 
     smoothed_rrs = (
         rrs
@@ -86,14 +89,14 @@ def run_sdp(rrs,wl,sst,sss):
     cutoff_rrs = smoothed_rrs.loc[:,400:700]
 
     print('calculating residuals')
-    rrs_residuals =  Kramer_hyperRrs.get_rrs_residuals(cutoff_rrs, sst, sss, wl)[1]
-    res_end = time.time()
+    rrs_residuals = get_rrs_residuals(cutoff_rrs, sst, sss, wl)[1]
+    res_end = perf_counter()
     print('residuals calculated', res_end-res_start)
 
     print('calculating 2nd derivative')
-    deriv_start = time.time()
+    deriv_start = perf_counter()
     rrs_residuals_d2 = np.diff(rrs_residuals, 2, axis=0).T
-    deriv_end = time.time()
+    deriv_end = perf_counter()
     print('2nd derivative calculated', deriv_end-deriv_start)
     sdp = np.zeros((rrs_residuals_d2.shape[0],len(sdp_names)))
 
@@ -102,15 +105,15 @@ def run_sdp(rrs,wl,sst,sss):
     print(rrs_residuals_d2.shape)
 
     print('running coefs')
-    coef_start = time.time()
+    coef_start = perf_counter()
     for p, name in enumerate(sdp_names):
 
 
         # Read in A and C coefficients
         # a_coefs shape: (n_wl, 100), c_coefs shape: (100,)
         # A and C coefficients need to be pre-computed and stored in excel sheets
-        a_coefs = pd.read_excel('sdp_coefs/original_a_coefs.xlsx', sheet_name=name, header=None).values  # shape: (n_wl, 100)
-        c_coefs = pd.read_excel('sdp_coefs/original_c_coefs.xlsx', sheet_name=name, header=None).values.flatten()  # shape: (100,)
+        a_coefs = pd.read_excel(ASSETS / 'sdp_coefs' / 'original_a_coefs.xlsx', sheet_name=name, header=None).values  # shape: (n_wl, 100)
+        c_coefs = pd.read_excel(ASSETS / 'sdp_coefs' / 'original_c_coefs.xlsx', sheet_name=name, header=None).values.flatten()  # shape: (100,)
 
         # Matrix multiplication to compute all runs for all samples
         # Result: run_vals_all shape (n_samples, 100)
@@ -123,7 +126,7 @@ def run_sdp(rrs,wl,sst,sss):
         median_run[median_run < 0] = 0
 
         sdp[:, p] = median_run
-    coef_end = time.time()
+    coef_end = perf_counter()
     print('coefs run complete', coef_end-coef_start)
 
     return pd.DataFrame(sdp, columns=sdp_names)
@@ -287,11 +290,11 @@ def sdp_from_pace(pace_file, output_str, sss_file='climatology\sss_climatology_w
 
     print('generating pigments from PACE')
 
-    interp_start = time.time()
+    interp_start = perf_counter()
     print('starting interpolation')
 
     rrs_interp, sss_interp, sst_interp = interpolate_coords(pace_file, sss_file, sst_file)
-    interp_end = time.time()
+    interp_end = perf_counter()
     print('interpolation complete:', interp_end - interp_start)
 
     print('rrs_interp shape:', rrs_interp.shape)
@@ -365,10 +368,3 @@ def sdp_from_pace(pace_file, output_str, sss_file='climatology\sss_climatology_w
     results_str = 'sdp_pigments-' + output_str
 
     pigments.to_netcdf(results_str)
-    
-if __name__ == "__main__":
-
-    pace = 'PACE_OCI.20251006T091808.L2.OC_AOP.V3_1.NRT.nc'
-    sdp_from_pace(pace, output_str='test_clim')
-
-

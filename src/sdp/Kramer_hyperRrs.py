@@ -1,11 +1,13 @@
+from importlib.resources import files
 from typing import Tuple, Union
 
 import numpy as np
-from scipy.optimize import fmin
 import pandas as pd
-import sys
-import time
 import ray
+from scipy.optimize import fmin
+
+ASSETS = files().joinpath('resources')
+
 
 def RInw(
     lambda_: Union[int, float, np.ndarray],
@@ -279,8 +281,8 @@ def get_rrs_residuals(Rrs, temp, sal, wavelengths):
 
     # define total absorption as a sum of seawater absorption (asw), phytoplankton absorption (aph) 
     # and CDOM plus other detrital matter (acdm)
-    asw_chart = pd.read_csv('aw_mcf16_350_700_1nm.csv', header=0)
-    AB_coefs = pd.read_csv('aph_A_B_Coeffs_Sasha_RSE_paper.csv', header=0)
+    asw_chart = pd.read_csv(ASSETS / 'aw_mcf16_350_700_1nm.csv', header=0)
+    AB_coefs = pd.read_csv(ASSETS / 'aph_A_B_Coeffs_Sasha_RSE_paper.csv', header=0)
 
     A = np.zeros(len(wavelengths)) 
     B = np.zeros(len(wavelengths)) 
