@@ -82,7 +82,7 @@ def run_sdp(rrs,wl,sst,sss):
 
     smoothed_rrs = (
         rrs
-        .rolling(window=5, min_periods=1, axis=1)
+        .rolling(window=5, min_periods=1) #, axis=1
         .mean()
     )
 
@@ -108,12 +108,12 @@ def run_sdp(rrs,wl,sst,sss):
     coef_start = perf_counter()
     for p, name in enumerate(sdp_names):
 
-
         # Read in A and C coefficients
         # a_coefs shape: (n_wl, 100), c_coefs shape: (100,)
         # A and C coefficients need to be pre-computed and stored in excel sheets
-        a_coefs = pd.read_excel(ASSETS / 'sdp_coefs' / 'original_a_coefs.xlsx', sheet_name=name, header=None).values  # shape: (n_wl, 100)
-        c_coefs = pd.read_excel(ASSETS / 'sdp_coefs' / 'original_c_coefs.xlsx', sheet_name=name, header=None).values.flatten()  # shape: (100,)
+        a_coefs = pd.read_excel(ASSETS / 'sdp_coefs' / 'original_a_coefs.xlsx', sheet_name=name, header=0)
+        a_coefs = a_coefs.drop(columns=a_coefs.columns[0]).values # shape: (n_wl, 100)
+        c_coefs = pd.read_excel(ASSETS / 'sdp_coefs' / 'original_c_coefs.xlsx', sheet_name=name, header=0).values.flatten()  # shape: (100,)
 
         # Matrix multiplication to compute all runs for all samples
         # Result: run_vals_all shape (n_samples, 100)
@@ -162,7 +162,7 @@ def interpolate_coords(rrs_path, sal_path, temp_path):
     dataset = dataset.set_coords(("longitude", "latitude"))
     dataset_r = xr.merge((rrs, dataset.coords))
     dataset_r = dataset_r.assign_coords(
-        wavelength_3d = wavelength_coords
+        wavelength = wavelength_coords
     )
 
     n_bound = dataset_r.latitude.values.max()
@@ -242,10 +242,10 @@ def interpolate_coords(rrs_path, sal_path, temp_path):
 
 
     rrs_flat = rrs_box.stack(pixel=("number_of_lines", "pixels_per_line"))
-    rrs_flat = rrs_flat.transpose("pixel", "wavelength_3d")
-    rrs_flat = rrs_flat.interp(wavelength_3d=np.arange(346,720))
+    rrs_flat = rrs_flat.transpose("pixel", "wavelength")
+    rrs_flat = rrs_flat.interp(wavelength=np.arange(346,720))
 
-    rrs_np = rrs_flat.to_numpy().reshape(-1, rrs_flat.wavelength_3d.size)
+    rrs_np = rrs_flat.to_numpy().reshape(-1, rrs_flat.wavelength.size)
     rrs_df = pd.DataFrame(rrs_np, columns=np.arange(346,720,1))
 
     sal_np = sal.to_numpy().flatten()
@@ -365,6 +365,6 @@ def sdp_from_pace(pace_file, output_str, sss_file='climatology\sss_climatology_w
     # add lat/lon coords
     pigments = xr.merge((pigments, nav_data.coords))
 
-    results_str = 'sdp_pigments-' + output_str
+    #results_str = 'sdp_pigments-' + output_str
 
-    pigments.to_netcdf(results_str)
+    pigments.to_netcdf(output_str)
