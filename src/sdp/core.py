@@ -162,7 +162,7 @@ def interpolate_coords(rrs_path, sal_path, temp_path):
     dataset = dataset.set_coords(("longitude", "latitude"))
     dataset_r = xr.merge((rrs, dataset.coords))
     dataset_r = dataset_r.assign_coords(
-        wavelength = wavelength_coords
+        wavelength_3d = wavelength_coords ###'_3d' needs to be deleted for 3.2
     )
 
     n_bound = dataset_r.latitude.values.max()
@@ -242,10 +242,10 @@ def interpolate_coords(rrs_path, sal_path, temp_path):
 
 
     rrs_flat = rrs_box.stack(pixel=("number_of_lines", "pixels_per_line"))
-    rrs_flat = rrs_flat.transpose("pixel", "wavelength")
-    rrs_flat = rrs_flat.interp(wavelength=np.arange(346,720))
+    rrs_flat = rrs_flat.transpose("pixel", "wavelength_3d") ###'_3d' needs to be deleted for 3.2
+    rrs_flat = rrs_flat.interp(wavelength_3d=np.arange(346,720)) ###'_3d' needs to be deleted for 3.2
 
-    rrs_np = rrs_flat.to_numpy().reshape(-1, rrs_flat.wavelength.size)
+    rrs_np = rrs_flat.to_numpy().reshape(-1, rrs_flat.wavelength_3d.size) ###'_3d' needs to be deleted for 3.2
     rrs_df = pd.DataFrame(rrs_np, columns=np.arange(346,720,1))
 
     sal_np = sal.to_numpy().flatten()
