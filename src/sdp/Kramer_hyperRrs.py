@@ -344,8 +344,16 @@ def get_rrs_residuals(Rrs, temp, sal, wavelengths):
     ]
 
     # to run serially, comment out from here ...
-    '''
-    ray.init(include_dashboard=False)
+
+    #ray.init(include_dashboard=False)
+
+    ray.init(
+        runtime_env={
+            "env_vars": {
+                "PYTHONPATH": "/glusteruser/awindled/rrs-SDP-pigments/src"
+            }
+        }
+    )
 
     print('ray availble resources', ray.available_resources(),'\n')
 
@@ -389,7 +397,7 @@ def get_rrs_residuals(Rrs, temp, sal, wavelengths):
     
         iops_i = gsm_invert(rrs_i, asw_t, bbsw_i, bbp_i, A_t, B_t, acdm_i)
         IOPs[i, :] = iops_i
-    
+'''    
 
     asw_ = asw[:, np.newaxis]
     A_ = A[:, np.newaxis]
