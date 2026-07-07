@@ -1,6 +1,7 @@
 from datetime import datetime
 from importlib.resources import files
 from time import perf_counter
+from pathlib import Path
 
 import cartopy
 import matplotlib.pyplot as plt
@@ -140,7 +141,7 @@ def interpolate_coords(rrs_path, sal_path, temp_path):
 
     Parameters:
     -----------
-    L2_path : strclimatology\sst_climatology.nc
+    L2_path : str
         A single file path to a PACE L2 AOP file.
     sal_path : str
         A single file path to a salinity file.
@@ -280,7 +281,7 @@ def plot_pigments(data, lower_bound, upper_bound, title):
     )
     plt.show()
 
-def sdp_from_pace(pace_file, output_str, sss_file='climatology\sss_climatology_woa2009.nc', sst_file='climatology\sst_climatology.nc'):
+def sdp_from_pace(pace_file, output_str, sss_file=None, sst_file=None):
     '''
     Apply SDP to PACE L2 Rrs data to generate pigment concentrations. Saves the results as a netCDF file.
     
@@ -289,6 +290,12 @@ def sdp_from_pace(pace_file, output_str, sss_file='climatology\sss_climatology_w
     :param sss_file: SMAP or climatology salinity file path.
     :param sst_file: GHRSST or climatology temperature file path.
     '''
+
+    if sss_file is None:
+        sss_file = Path('climatology', 'sss_climatology_woa2009.nc')
+
+    if sst_file is None:
+        sst_file = Path('climatology', 'sst_climatology.nc')
 
     print('generating pigments from PACE')
 
