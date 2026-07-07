@@ -22,7 +22,9 @@ dependencies = [
 
 [dependency-groups]
 examples = [
-    "earthaccess>=0.14.0",    
+    "ipywidgets>=8.1.8",
+    "ipykernel>=7.3.0",
+    "earthaccess>=0.18.0",    
 ]
 
 [tool.hatch.version]
