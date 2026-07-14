@@ -29,6 +29,7 @@ examples = [
 
 [tool.hatch.version]
 source = "vcs"
+tag-pattern = "SDP\\.v(.*)"
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]
