@@ -21,7 +21,7 @@ dependencies = [
 
 [project.optional-dependencies]
 ray = [
-    "ray>=2.55.1",
+    "ray[default]>=2.55.1",
 ]
 
 [dependency-groups]
