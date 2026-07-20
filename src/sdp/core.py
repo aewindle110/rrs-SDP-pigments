@@ -134,56 +134,81 @@ def run_sdp(rrs,wl,sst,sss):
 
     return pd.DataFrame(sdp, columns=sdp_names)
 
-def interpolate_coords(rrs_path, sal_path, temp_path):
+def interpolate_coords(rrs_path, sal_path, temp_path, bbox):
     '''
     Interpolate the salinity and temperature data coordinates onto the PACE L2 Rrs coordinates. Default use climatology files.
     Can pass in GHRSST and SMAP files as well. 
 
     Parameters:
     -----------
-    L2_path : str
+    rrs_path : str
         A single file path to a PACE L2 AOP file.
     sal_path : str
         A single file path to a salinity file.
     temp_path : str
         A single file path to a temperature file.
+    bbox: tuple of floats or ints
+        A tuple representing spatial bounds in the form (lower_left_lon, lower_left_lat, upper_right_lon, upper_right_lat).
+        Default is None, which means the entire L2 granule will be processed
 
     Returns:
     --------
     rrs_box, rrs_unc_box, wavelength_coords, sal, temp : Xarrays all on the same lat/lon coordinates (except wavelength_coords, which is a 1D array)
     '''
 
-    # define wavelengths
-    sensor_band_params = xr.open_dataset(rrs_path, group='sensor_band_parameters')
-    wavelength_coords = sensor_band_params.wavelength_3d.values
+    # Open PACE groups
+    sensor_band_params = xr.open_dataset(rrs_path, group="sensor_band_parameters")
+    geophysical_data = xr.open_dataset(rrs_path, group="geophysical_data")
+    navigation_data = xr.open_dataset(rrs_path, group="navigation_data")
     
-    dataset = xr.open_dataset(rrs_path, group='geophysical_data')
-    rrs = dataset['Rrs']
-
-    # Add latitude and longitude coordinates to the Rrs and Rrs uncertainty datasets
-    dataset = xr.open_dataset(rrs_path, group="navigation_data")
-    dataset = dataset.set_coords(("longitude", "latitude"))
-    dataset_r = xr.merge((rrs, dataset.coords))
-    dataset_r = dataset_r.assign_coords(
-        wavelength = wavelength_coords
+    # Extract wavelength coordinates
+    wavelength = sensor_band_params["wavelength_3d"].values
+    
+    # Get Rrs and attach coordinates
+    navigation_data = navigation_data.set_coords(("latitude", "longitude"))
+    
+    rrs = (
+        geophysical_data["Rrs"]
+        .assign_coords(
+            latitude=navigation_data.latitude,
+            longitude=navigation_data.longitude,
+            wavelength=wavelength,
+        )
     )
+    
+    if bbox is not None:
+        w,s,e,n = bbox[0],bbox[1],bbox[2],bbox[3]
 
-    n_bound = dataset_r.latitude.values.max()
-    s_bound = dataset_r.latitude.values.min() 
-    e_bound = dataset_r.longitude.values.max()
-    w_bound = dataset_r.longitude.values.min()
+        try:
+            rrs_box = rrs.where(
+                (
+                    (rrs["latitude"] > s)
+                    & (rrs["latitude"] < n)
+                    & (rrs["longitude"] < e)
+                    & (rrs["longitude"] > w)
+                ),
+                drop=True,
+            )
+        except ValueError:
+            print('Boundary box is outside of the granule boundary.')
+            raise
+    else:
+        n = rrs.latitude.values.max()
+        s = rrs.latitude.values.min() 
+        e = rrs.longitude.values.max()
+        w = rrs.longitude.values.min()
 
-    print('north',n_bound,'south',s_bound,'east',e_bound,'west',w_bound)
-
-    rrs_box = dataset_r["Rrs"].where(
-        (
-            (dataset["latitude"] > s_bound) # southern boundary latitude
-            & (dataset["latitude"] < n_bound) # northern boundary latitude
-            & (dataset["longitude"] < e_bound) # eastern boundary latitude
-            & (dataset["longitude"] > w_bound) # western boundary latitude
-        ),
-        drop=True,
-    )
+        rrs_box = rrs.where(
+            (
+                (rrs["latitude"] > s)
+                & (rrs["latitude"] < n)
+                & (rrs["longitude"] < e)
+                & (rrs["longitude"] > w)
+            ),
+            drop=True,
+        )
+    print('north',n,'south',s,'east',e,'west',w)
+    
 
     with xr.open_dataset(rrs_path) as ds:
         time_coverage_start = ds.attrs['time_coverage_start']
@@ -281,7 +306,7 @@ def plot_pigments(data, lower_bound, upper_bound, title):
     )
     plt.show()
 
-def sdp_from_pace(pace_file, output_str, sss_file=None, sst_file=None):
+def sdp_from_pace(pace_file, output_str, sss_file=None, sst_file=None, bbox=None):
     '''
     Apply SDP to PACE L2 Rrs data to generate pigment concentrations. Saves the results as a netCDF file.
     
@@ -289,6 +314,8 @@ def sdp_from_pace(pace_file, output_str, sss_file=None, sst_file=None):
     :param output_str: file name string to save results as.
     :param sss_file: SMAP or climatology salinity file path.
     :param sst_file: GHRSST or climatology temperature file path.
+    :param bbox: A tuple representing spatial bounds in the form (lower_left_lon, lower_left_lat, upper_right_lon, upper_right_lat).
+        Default is None, which means the entire L2 granule will be processed
     '''
 
     if sss_file is None:
@@ -297,12 +324,10 @@ def sdp_from_pace(pace_file, output_str, sss_file=None, sst_file=None):
     if sst_file is None:
         sst_file = Path('climatology', 'sst_climatology.nc')
 
-    print('generating pigments from PACE')
-
     interp_start = perf_counter()
     print('starting interpolation')
 
-    rrs_interp, sss_interp, sst_interp = interpolate_coords(pace_file, sss_file, sst_file)
+    rrs_interp, sss_interp, sst_interp = interpolate_coords(pace_file, sss_file, sst_file, bbox)
     interp_end = perf_counter()
     print('interpolation complete:', interp_end - interp_start)
 
@@ -329,12 +354,46 @@ def sdp_from_pace(pace_file, output_str, sss_file=None, sst_file=None):
     full_sdp.loc[~nanmask, :] = sdp.values
     sdp = full_sdp
 
-    # add lat/lon coords
+    # add lat/long coords
     nav_data = xr.open_dataset(pace_file, group="navigation_data")
-    nav_data = nav_data.set_coords(("longitude", "latitude"))
-    number_of_lines = int(nav_data.latitude.number_of_lines.shape[0])
-    pixels_per_line = int(nav_data.latitude.pixels_per_line.shape[0])
+    nav_data = nav_data.set_coords(("latitude", "longitude"))
+    
+    if bbox is not None:
+        w,s,e,n = bbox[0],bbox[1],bbox[2],bbox[3]
 
+        try:
+            nav_box = nav_data.where(
+                (
+                    (nav_data["latitude"] > s)
+                    & (nav_data["latitude"] < n)
+                    & (nav_data["longitude"] < e)
+                    & (nav_data["longitude"] > w)
+                ),
+                drop=True,
+            )
+        except ValueError:
+            print('Boundary box is outside of the granule boundary.')
+            raise
+    else:
+        n = nav_data.latitude.values.max()
+        s = nav_data.latitude.values.min() 
+        e = nav_data.longitude.values.max()
+        w = nav_data.longitude.values.min()
+
+        nav_box = nav_data.where(
+            (
+                (nav_data["latitude"] > s)
+                & (nav_data["latitude"] < n)
+                & (nav_data["longitude"] < e)
+                & (nav_data["longitude"] > w)
+            ),
+            drop=True,
+        )
+
+    
+    number_of_lines = int(nav_box.latitude.number_of_lines.shape[0])
+    pixels_per_line = int(nav_box.latitude.pixels_per_line.shape[0])
+    
     chla = sdp['Tchla'].values.reshape(number_of_lines, pixels_per_line)
     chlb = sdp['MVchlb'].values.reshape(number_of_lines, pixels_per_line)
     chlc12 = sdp['Chlc12'].values.reshape(number_of_lines, pixels_per_line)
@@ -372,7 +431,7 @@ def sdp_from_pace(pace_file, output_str, sss_file=None, sst_file=None):
     )
 
     # add lat/lon coords
-    pigments = xr.merge((pigments, nav_data.coords))
+    pigments = xr.merge((pigments, nav_box.coords))
 
     #results_str = 'sdp_pigments-' + output_str
 
